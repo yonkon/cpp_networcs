@@ -53,6 +53,7 @@ namespace client_server {
 					 TcpClient^ client;
 					 TcpListener^ listner;
 					 StreamReader^ sr;
+					 int mainPort;
 	private: System::Windows::Forms::TextBox^  textBox1;
 	private: System::Windows::Forms::Button^  b_clientSend;
 
@@ -232,16 +233,28 @@ namespace client_server {
 	private: System::Void Form1_Load(System::Object^  sender, System::EventArgs^  e) {
 						 servThread = gcnew System::Threading::Thread( gcnew System::Threading::ThreadStart(this, &Form1::ThreadProc ));
 						 tbChangeD = gcnew tbChangeDelegate(this, &Form1::tbChange);
+						 mainPort = 12002;
 					 }
 	private: System::Void button2_Click(System::Object^  sender, System::EventArgs^  e) {
 						 client = gcnew TcpClient();
 						 try{
-							 client->Connect(gcnew IPEndPoint(IPAddress::Parse("127.0.0.1"), 12000));
+							 client->Connect(gcnew IPEndPoint(IPAddress::Parse("127.0.0.1"), mainPort));
 							 this->b_clientSend->Visible=true;
 							 this->l_clientStatus->Visible = true;
 						 } catch (Exception^ ex)
 						 {
 							 MessageBox::Show("Connection error. Server unavailable :'(");
+						 }
+
+						 StreamWriter^ sw = gcnew StreamWriter(client->GetStream());
+						 sw->AutoFlush = true;
+						 try
+						 {
+							 sw->WriteLine(L"HELO");
+						 }
+						 catch (Exception^ ex)
+						 {
+							 MessageBox::Show("Send error");
 						 }
 
 						 /*client->Close();*/
@@ -259,10 +272,19 @@ namespace client_server {
 						 }
 					 }
 
+					 void handshake(TcpClient^ _client) {
+						 String^ token = Convert::ToString((gcnew Random)->Next(100000, 999999));
+						 String^ port = Convert::ToString((gcnew Random)->Next(mainPort, mainPort + 1000));
+						 File::WriteAllText(token+".tkn", port);
+						 String^ msg = L"SET TOKEN " + token + L"\1 SET PORT " + port + "\1";
+
+						 _client->GetStream()->Write();
+					 }
+
 					  void ThreadProc() { 
 							if(!servThread->IsAlive)
 								return;
-							listner = gcnew TcpListener(gcnew IPEndPoint(IPAddress::Parse("127.0.0.1"), 12000));
+							listner = gcnew TcpListener(gcnew IPEndPoint(IPAddress::Parse("127.0.0.1"), mainPort));
 							listner->Start();
 							TcpClient^ client = listner->AcceptTcpClient();
 							sr = gcnew StreamReader(client->GetStream());
@@ -272,6 +294,9 @@ namespace client_server {
 							 {
 								 String^ msg = sr->ReadLine();
 								 this->Invoke(tbChangeD, gcnew array<Object^> {textBox2, msg+Environment::NewLine});
+								 if (msg->IndexOf(L"HELO", 0) != -1 ) {
+									 handshake(client);
+								 }
 								 int queryIndx=msg->IndexOf(L"GET", 0);
 								 if( queryIndx == -1) {
 		 								// MessageBox::Show(msg);
